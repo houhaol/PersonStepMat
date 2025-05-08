@@ -66,7 +66,19 @@ python 3mat_classifier.py \
 ```
 The results are output with json or csv
 
+# 4MaterialVisualization video export
 Run visulization to merge frames and overlay masks and predicted materials. 
 ```
 python 4mat_visualize.py   --frame_dir ../dataset/pilot5_cilp_mat/frames   --mask_dir ../dataset/pilot5_cilp_mat/ground_mask   --json_file ../dataset/pilot5_cilp_mat/mat_predictions/temporal_predictions.json   --output_dir ../dataset/pilot5_cilp_mat/visualized   --alpha 0.6   --merge_video   --video_path ../dataset/pilot5_cilp_mat/visualized_mat_overlay.mp4   --fps 1
+```
+
+# 5Mateiral fusion with trajectory
+npy file is obtained from gopro. see step0. offset is the start of the video clip if have.  
+```
+python 5mat_fuse.py \
+  --traj trajectory.tum \
+  --csv image_labels.csv \
+  --npy image_timestamps.npy \
+  --offset 240.0 \
+  --output merged.csv
 ```
