@@ -98,7 +98,7 @@ def evaluate_validation_set(val_feats, val_labels, prototypes):
 
 def predict_infer_dir_temporal(infer_dir, model, preprocess, prototypes, device,
                                 window_size=5, ema_alpha=0.3, apply_ema=True,
-                                output_json=None, save_json=False):
+                                output_json=None, save_json=False, save_csv=False):
     results = []
     vis_dir = output_json
     os.makedirs(vis_dir, exist_ok=True)
@@ -170,6 +170,15 @@ def predict_infer_dir_temporal(infer_dir, model, preprocess, prototypes, device,
             json.dump(results, f, indent=2)
         print(f"\n📄 Saved temporal predictions to: {filename}")
 
+    # Save all predictions to csv file if needed
+    if save_csv:
+        filename = os.path.join(output_json, "temporal_predictions.csv")
+        with open(filename, 'w') as f:
+            f.write("image,label_raw,label_voted,confidence\n")
+            for result in results:
+                f.write(f"{result['image']},{result['label_raw']},{result['label_voted']},{result['confidence']}\n")
+        print(f"\n📄 Saved temporal predictions to: {filename}")
+
 
         
 
@@ -182,6 +191,7 @@ if __name__ == "__main__":
     parser.add_argument("--pretrained", default="laion2b_s34b_b79k", help="Pretrained model tag")
     parser.add_argument("--output", default="clip_material_predictions.json", help="Path to save predictions")
     parser.add_argument("--json", action="store_true", help="Save results to JSON")
+    parser.add_argument("--csv", action="store_true", help="Save results to CSV")
     parser.add_argument("--val_ratio", type=float, default=0.2, help="Fraction of support samples to hold out for validation")
     args = parser.parse_args()
 
@@ -222,6 +232,7 @@ if __name__ == "__main__":
             ema_alpha=0.4,
             apply_ema=True,
             output_json=args.output,
-            save_json=args.json
+            save_json=args.json,
+            save_csv=args.csv
         )
 

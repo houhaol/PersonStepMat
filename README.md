@@ -1,6 +1,11 @@
 # 0TrackingParticipants 
 Downsampling the video frames and merge them in windows. files under BEFIT\scripts
-`python sample_and_merge_video.py --video E:BEFIT\Pilot5_Mar272025\TPSVideo\Pilot5_Mat_Transit.mp4 --frame_dir E:BEFIT\Pilot5_Mar272025\TPSVideo\downsampling --output E:BEFIT\Pilot5_Mar272025\TPSVideo\merged.mp4`
+Gopro timestamp can be genereated from py_gpmf_parser, see utilis scripts. Timestamps are in relative timeframes. 
+```
+python sample_and_merge_video.py --video E:BEFIT\Pilot5_Mar272025\TPSVideo\Pilot5_Mat_Transit.mp4 --frame_dir E:BEFIT\Pilot5_Mar272025\TPSVideo\downsampling --output E:BEFIT\Pilot5_Mar272025\TPSVideo\merged.mp4
+or
+python sample.py --video /path/to/video --timestamps path/to/timestamp --output output
+```
 
 ```conda activate track
 # cd Track-Anything to run python `python app.py --device cuda:0 --mask_save False`
@@ -59,6 +64,8 @@ python 3mat_classifier.py \
   --output ../dataset/mat_predictions \
   --val_ratio 0.0
 ```
+The results are output with json or csv
+
 Run visulization to merge frames and overlay masks and predicted materials. 
 ```
 python 4mat_visualize.py   --frame_dir ../dataset/pilot5_cilp_mat/frames   --mask_dir ../dataset/pilot5_cilp_mat/ground_mask   --json_file ../dataset/pilot5_cilp_mat/mat_predictions/temporal_predictions.json   --output_dir ../dataset/pilot5_cilp_mat/visualized   --alpha 0.6   --merge_video   --video_path ../dataset/pilot5_cilp_mat/visualized_mat_overlay.mp4   --fps 1
