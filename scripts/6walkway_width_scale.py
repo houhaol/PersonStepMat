@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 import argparse
 import csv
+import h5py
 
 def get_shoulder_avg(keypoints):
     # Shoulders: 2 (RShoulder), 5 (LShoulder)
@@ -49,41 +50,26 @@ def main():
     with open(args.crop_offsets_json) as f:
         crop_offsets = json.load(f)
 
-    keypoint_files = sorted(os.listdir(args.keypoint_json))
-    ground_mask_files = sorted(os.listdir(args.ground_mask))
-    frame_files = sorted(os.listdir(args.frame_name))
+    keypoints_h5 = h5py.File(args.keypoint_json, 'r')
+    ground_mask_h5 = h5py.File(args.ground_mask, 'r')
+    frame_h5 = h5py.File(args.frame_name, 'r')
 
     if args.output_vis_dir:
         os.makedirs(args.output_vis_dir, exist_ok=True)
 
     results = []
 
-    for keypoint_file in keypoint_files:
-        frame_id = keypoint_file.replace('_keypoints.json', '')
-        ground_mask_file = f"{frame_id}_ground_mask.png"
-        frame_file = f"{frame_id}.png"
+    for frame_id in keypoints_h5['pose_keypoints']:
+        keypoints = keypoints_h5['pose_keypoints'][frame_id][:]
+        # Access data from HDF5 files
+        ground_mask = ground_mask_h5['binary_masks'][frame_id][:]
+        frame = frame_h5['frames'][frame_id][:]
+        import pdb; pdb.set_trace()
 
-        keypoint_path = os.path.join(args.keypoint_json, keypoint_file)
-        ground_mask_path = os.path.join(args.ground_mask, ground_mask_file)
-        frame_path = os.path.join(args.frame_name, frame_file)
-
-        if not os.path.exists(ground_mask_path) or not os.path.exists(frame_path):
-            print(f"Skipping {frame_id}: Missing ground mask or frame file")
-            continue
-
-        with open(keypoint_path) as f:
-            kpt_data = json.load(f)
-
-        frame_name_tmp = frame_file
-        offset = crop_offsets.get(frame_name_tmp, {"x1": 0, "y1": 0})
-        dx, dy = offset['x1'], offset['y1']
-
-        keypoints = kpt_data['people'][0]['pose_keypoints_2d']
+        # Convert HDF5 datasets to numpy arrays
         keypoints = np.array(keypoints)
-        # Restore to original frame
-        for i in range(0, len(keypoints), 3):
-            keypoints[i] += dx
-            keypoints[i+1] += dy
+        ground_mask = np.array(ground_mask)
+        frame = np.array(frame)
 
         # Top: avg shoulder
         top = get_shoulder_avg(keypoints)
@@ -93,19 +79,18 @@ def main():
         # Check if no feet keypoints were extracted
         if bottom is None:
             print(f"{frame_id}: No feet keypoints extracted. Walkway width estimation: NA")
-            results.append({"frame_name": frame_file, "width_m": "NA"})
+            results.append({"frame_name": frame_id, "width_m": "NA"})
             continue
 
         # Pixel height
         pixel_height = abs(bottom[1] - top[1])
         # Ground width in px
-        ground_width_px, ground_line = get_ground_width(ground_mask_path, bottom)
+        ground_width_px, ground_line = get_ground_width(ground_mask, bottom)
 
         # Check if ground line equals the width of the image
-        mask = np.array(Image.open(ground_mask_path))
-        if ground_width_px == mask.shape[1]:
+        if ground_width_px == frame.shape[1]:
             print(f"{frame_id}: Ground line equals image width. Walkway width estimation: NA")
-            results.append({"frame_name": frame_file, "width_m": "NA"})
+            results.append({"frame_name": frame_id, "width_m": "NA"})
             continue
 
         # Scale
@@ -114,16 +99,15 @@ def main():
         print(f"{frame_id}: Ground width (meters):", ground_width_m)
 
         # Append result
-        results.append({"frame_name": frame_file, "width_m": ground_width_m})
+        results.append({"frame_name": frame_id, "width_m": ground_width_m})
 
         # Visualization for debug
         if args.output_vis_dir:
             import cv2
 
             # Load the original image (assume same name as frame_name, update path as needed)
-            img_path = frame_path  # You may need to update this to the correct path
-            if os.path.exists(img_path):
-                img = np.array(Image.open(img_path).convert('RGB'))
+            img = frame  # Already loaded as numpy array
+            if img is not None:
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
                 # Draw all keypoints
@@ -170,7 +154,7 @@ def main():
                 cv2.imwrite(vis_path, img)
                 print('Visualization saved to', vis_path)
             else:
-                print('Image file not found for visualization:', img_path)
+                print('Image data not found for visualization:', frame_id)
 
     # Save results to CSV
     if args.output_csv:

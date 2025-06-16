@@ -20,6 +20,7 @@ import h5py
 parser = argparse.ArgumentParser(description="Process GoPro video and save frames and timestamps.")
 parser.add_argument("--filename", type=str, help="Path to the GoPro video file.")
 parser.add_argument("--duration", type=float, default=24, help="Duration in minutes to process the video.")
+parser.add_argument("--output", type=str, help="Path to the output HDF5 file.")
 args = parser.parse_args()
 
 filename = args.filename
@@ -72,12 +73,14 @@ if status:
     print("Processing....")
     print(" ")
 
-    # Create an HDF5 file to store frames and timestamps
-    h5_file = h5py.File(filename[:-4] + '_data.h5', 'w')
-    frames_dataset = h5_file.create_dataset('frames', shape=(0, int(height), int(width), 3), maxshape=(None, int(height), int(width), 3), dtype='uint8', chunks=True)
-    timestamps_dataset = h5_file.create_dataset('timestamps', shape=(0,), maxshape=(None,), dtype='int64', chunks=True)
+    # Update the output file path to use the argument
+    output_file = args.output if args.output else filename[:-4] + '_data.h5'
 
-    # Reads through each frame, calculates the timestamp, and saves the frame and timestamp
+    # Modify the HDF5 file to save frames with names as 'frame_{timestamp}'
+    h5_file = h5py.File(output_file, 'w')
+    frames_group = h5_file.create_group('frames')
+
+    # Reads through each frame, calculates the timestamp, and saves the frame
     while current_frame < total_frames:
         success, image = video.read()
         # change the color space from BGR to RGB
@@ -91,24 +94,17 @@ if status:
 
         current_frame = int(video.get(cv2.CAP_PROP_POS_FRAMES))
         timestamp = initial + dt.timedelta(microseconds=elapsed_time * 1000)
+        timestamp_str = int(timestamp.timestamp() * 1e9)  # Convert to nanoseconds
 
         # Reduce the frame rate by skipping frames
-        if (current_frame+1) % 2 != 0:  # Skip every other frame for 30fps to 15fps reduction
+        if (current_frame + 1) % 2 != 0:  # Skip every other frame for 30fps to 15fps reduction
             continue
 
         # Show progress when saving the h5py data
         print(f"Saving frame {current_frame}/{total_frames}...")
 
-        # Append the frame and timestamp to the HDF5 datasets
-        frames_dataset.resize(frames_dataset.shape[0] + 1, axis=0)
-        frames_dataset[-1] = image
-
-        timestamps_dataset.resize(timestamps_dataset.shape[0] + 1, axis=0)
-        timestamps_dataset[-1] = int(timestamp.timestamp() * 1e9)
-
-        k = cv2.waitKey(1)
-        if k == 27:
-            break
+        # Save the frame with the name 'frame_{timestamp}'
+        frames_group.create_dataset(f'frame_{timestamp_str}', data=image, dtype='uint8')
 
     video.release()
     cv2.destroyAllWindows()

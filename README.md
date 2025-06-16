@@ -14,33 +14,37 @@ python app.py --device cuda:0 --mask_save False
 Get the mask and tracking results for participants in video frames. \
 Masks results are under ./Track-Anything/result/mask/508/mask_00000.npy \ 
 
+## 0.1 Large scale implementatiom, efficientTAM
 For large scale implementation, we use efficientTAM instead. \
 We need to save the video data accordingly in npy file, so we have
 ```
-python 0gopro_video_to_npy.py --filename /home/houhao/workspace/VINS-Fusion/pilot10/GX010048.MP4 --duration 10
+python 0gopro_video_to_h5py.py --filename /home/houhao/workspace/VINS-Fusion/pilot10/GX010048.MP4 --duration 0.25 -
+-output ../dataset/pilot10/frames.h5
 ```
 For tracking purpose, use the first image to define the region on participants. Use jupyer for better visualization. Then revise the code to run the tracking inference. 
 ```
 python example_video_gopro.py --h5_file /home/houhao/workspace/VINS-Fusion/pilot10/GX010048_data_test.h5 --output_file /home/houhao/workspace/VINS-Fusion/pilot10/masks_data.h5
-
+```
 # 1Openpose for feet detection
-conda activate sam
 ```
-python 1crop_from_masks.py \
-  --frame_dir ../dataset/sampled_frames \
-  --mask_dir ../dataset/masks \
-  --output_dir ../dataset/cropped \
-  --padding_scale 1.25
+conda activate sam
+
+python 1crop_from_masks.py   --frame_h5 ../dataset/pilot10/GX010048_data_test.h5   --mask_h5 ../dataset/pilot10/masks.h5   --output_dir ../dataset/pilot10/cropped   --padding_scale 1.25 --save_to_h5
 ```
 
+In Docker run, dir should under ~/workspace/openpose-docker, if cuda not work, stop and restart
 ```
 sudo docker exec -it b9f0bb72fadc /bin/bash
-# In Docker run 
-# dir should under ~/workspace/openpose-docker
 ./build/examples/openpose/openpose.bin --image_dir /home/houhao/PersonStepMat/dataset/cropped --write_json /home/houhao/PersonStepMat/dataset/openpose_json/ --display 0 --num_gpu 1 --render_pose 0 --number_people_max 1
-# if cuda not work, stop and restart
 ```
+## 1.1 Large scale implementation
+For large scale implementation, have to use python api
+```
+python3 befit_batch_process.py --input_h5 /home/houhao/pilot10/cropped/cropped_data.h5 --output_h5 /home/houhao/pilot10/openpose.h5
+```
+Output is h5py file, saving all keypoints. 
 
+## 1.2 feet prompts (optional)
 After that, map openpose detected keypoints on full frame in the local terminal and also use the feet as prompts for ground detection. 
 ```
 python 1map_keypoints.py \
@@ -65,13 +69,16 @@ python 2sam_ground.py \
   --model_type vit_b
 ```
 
+## 2.1 Ground segments first, then feet to filter
 Altertiavely, we can apply grounded_sam_2 to get all candidate ground segments in video frames. Ground segments will be saved as json file. Then, for feet, we set a patch around feet and see if these two patches are overlapped with candidate ground segments. 
 ```
 sudo docker exec -it c75ab3b1739e /bin/bash
 # files under Grounded-SAM-2/data/pilot0/frames/. nano local_video_frames.py
-
+python 2ground_segmentation_batch.py --output_h5 /home/houhao/Grounded-SAM-2/data/pilot10/ground.h5 --frame_h5 /home/houhao/Grounded-SAM-2/data/pilot10/GX010048_data_test.h5
 
 python 2ground_overlap.py --batch_keypoint_dir ../dataset/pilot5_cilp_mat/openpose_json/ --offset_json ../dataset/pilot5_cilp_mat/cropped/crop_offsets.json --batch_ground_dir ~/workspace/Grounded-SAM-2/results/pilot9/grounded_sam2_frames/ --output_prompt_dir ../dataset/pilot5_cilp_mat/ground_overlap_prompts --output_mask_dir ../dataset/pilot5_cilp_mat/ground_overlap_masks
+
+python  2ground_overlap.py --keypoints_h5 ../dataset/pilot10/openpose.h5 --ground_h5 ../dataset/pilot10/ground.h5 --output_h5 ../dataset/pilot10/filter_ground.h5 --offset_json ../dataset/pilot10/cropped/crop_offsets.json
 ```
 
 # 3MaterialClassification
@@ -122,11 +129,12 @@ python 5mat_fuse.py \
 ```
 python 6walkway_width_scale.py --keypoint_json ../dataset/pilot5_cilp_mat/openpose_json/ --crop_offsets_json ../dataset/pilot5_cilp_mat/cropped/crop_offsets.json --ground_mask ../dataset/pilot5_cilp_mat/ground_overlap_masks/ --frame_name ../dataset/pilot5_cilp_mat/frames/ --real_height 1.3 --output_csv ../dataset/pilot5_cilp_mat/walkway_estimation/walkway_width.csv --output_vis_dir ../dataset/pilot5_cilp_mat/walkway_estimation/
 
+python 6walkway_width_scale.py --keypoint_json ../dataset/pilot10/openpose.h5 --crop_offsets_json ../dataset/pilot10/cropped/crop_offsets.json --ground_mask ../dataset/pilot10/filter_ground.h5 --frame_name ../dataset/pilot10/frames.h5 --real_height 1.5 --output_csv ../dataset/pilot10/walkway_width.csv 
+
 
 python 6walkway_width_depth.py --keypoint_json ../dataset/pilot5_cilp_mat/openpose_json/ --crop_offsets_json ../dataset/pilot5_cilp_mat/cropped/crop_offsets.json --ground_mask ../dataset/pilot5_cilp_mat/ground_overlap_masks/ --frame_name ../dataset/pilot5_cilp_mat/frames/ --depth_dir ../dataset/pilot5_cilp_mat/depths/ --intrinsic_matrix ../dataset/pilot5_cilp_mat/intrinsic.json --cloud_dir ../dataset/pilot5_cilp_mat/cloud
 ```
 
-python 6walkway_width_depth.py --ground_mask ../dataset/pilot2/walkway_masks/ --frame_nam
-e ../dataset/pilot2/frames/ --depth_dir ../dataset/pilot2/depths/ --intrinsic_matrix ../dataset/pilot2/intrinsic.json --cloud_dir ../dataset/pilot2/cloud
+python 6walkway_width_depth.py --ground_mask ../dataset/pilot2/walkway_masks/ --frame_name ../dataset/pilot2/frames/ --depth_dir ../dataset/pilot2/depths/ --intrinsic_matrix ../dataset/pilot2/intrinsic.json --cloud_dir ../dataset/pilot2/cloud
 
 # 7walkway width visualization
