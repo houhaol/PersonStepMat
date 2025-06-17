@@ -5,6 +5,7 @@ import cv2
 import argparse
 from pycocotools import mask as maskUtils
 import h5py
+import tqdm
 
 def compute_iou(mask1, mask2):
     intersection = np.logical_and(mask1, mask2).sum()
@@ -25,7 +26,7 @@ def get_touched_ground_mask(annotations, keypoints, height, width, radius=20):
         best_mask = None
 
         for ann in annotations:
-            if ann['class_name'] == 'ground':
+            if ann['class_name'] == 'walkway [SEP]':
                 binary_mask = maskUtils.decode(ann['segmentation'])
                 patch = binary_mask[y1:y2, x1:x2]
                 if np.any(patch):
@@ -40,8 +41,8 @@ def get_touched_ground_mask(annotations, keypoints, height, width, radius=20):
     return touched_mask
 
 def process_frame(ground_h5_file, keypoints_data, mask_output_group, frame_name, crop_offsets):
-    results_group = ground_h5_file['results']
-    frame_group = results_group[frame_name]
+    frame_group = ground_h5_file[frame_name]
+    # frame_group = ground_h5_file[frame_name]
     annotations = json.loads(frame_group['annotations'][()])
 
     offset = crop_offsets.get(frame_name, {"x1": 0, "y1": 0})
@@ -61,33 +62,27 @@ def process_frame(ground_h5_file, keypoints_data, mask_output_group, frame_name,
         height=frame_group.attrs['img_height'],
         width=frame_group.attrs['img_width']
     )
+    # apply morphological operations to clean up the mask
+    # kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    # touched_mask = cv2.morphologyEx(touched_mask, cv2.MORPH_CLOSE, kernel)
+    # touched_mask = cv2.morphologyEx(touched_mask, cv2.MORPH_OPEN, kernel)
+    # touched_mask = np.clip(touched_mask, 0, 1)  # Ensure binary mask
 
-    mask_output_group.create_dataset(frame_name, data=touched_mask, dtype='uint8')
+    # keep only the largest connected component
+    if np.sum(touched_mask) == 0:
+        print(f"Warning: No touched ground detected in frame {frame_name}. Skipping.")
+        largest_component_mask = np.zeros_like(touched_mask)
+    else:
+        _, labels, stats, _ = cv2.connectedComponentsWithStats(touched_mask, connectivity=8)
 
-def batch_process(keypoints_h5_path, ground_h5_path, output_h5_path, offset_json):
-    with open(offset_json, "r") as f:
-        crop_offsets = json.load(f)
+        # Find the label of the largest component (excluding background)
+        largest_label = 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])  # skip background
 
-    with h5py.File(keypoints_h5_path, 'r') as keypoints_h5, \
-         h5py.File(ground_h5_path, 'r') as ground_h5, \
-         h5py.File(output_h5_path, 'w') as output_h5:
+        # Create a mask with only the largest component
+        largest_component_mask = np.zeros_like(touched_mask)
+        largest_component_mask[labels == largest_label] = 255
 
-        keypoints_group = keypoints_h5['pose_keypoints']
-        mask_output_group = output_h5.create_group('binary_masks')
-        
-        for frame_name in keypoints_group:
-            keypoints_data = keypoints_group[frame_name][:]
-            print(f"\n📷 Processing frame: {frame_name}")
-
-            process_frame(
-                ground_h5_file=ground_h5,
-                keypoints_data=keypoints_data,
-                mask_output_group=mask_output_group,
-                frame_name=frame_name,
-                crop_offsets=crop_offsets
-            )
-
-    print(f"\n✅ All binary masks saved to {output_h5_path}")
+    mask_output_group.create_dataset(frame_name, data=largest_component_mask, dtype='uint8')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Batch detect foot-ground overlap using keypoints and segmentation mask.")
@@ -100,15 +95,15 @@ if __name__ == "__main__":
     # Update to process HDF5 files for keypoints and ground data
     keypoints_h5 = h5py.File(args.keypoints_h5, 'r')
     ground_h5 = h5py.File(args.ground_h5, 'r')
+    ground_h5 = ground_h5['results']
 
     # Compute binary masks for foot-ground overlap using IoU
     # Save binary masks into an HDF5 file
     output_h5 = h5py.File(args.output_h5, 'w')
     binary_masks = output_h5.create_group('binary_masks')
 
-    for frame_name in keypoints_h5['pose_keypoints']:
+    for frame_name in tqdm.tqdm(keypoints_h5['pose_keypoints']):
         keypoints_data = keypoints_h5['pose_keypoints'][frame_name][:]
-        print(f"\n📷 Processing frame: {frame_name}")
 
         process_frame(
             ground_h5_file=ground_h5,

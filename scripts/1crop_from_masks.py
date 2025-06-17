@@ -47,7 +47,7 @@ def process_all_frames(frame_h5_path, mask_h5_path, output_dir, padding_scale, s
             # Iterate through the frames
             for frame_idx, frame_name in enumerate(masks_group):
                 frame_group = masks_group[frame_name]
-                frame = frames_dataset[frame_idx]  # Get the corresponding frame
+                frame = frames_dataset[frame_name]  # Get the corresponding frame
                 # Combine all masks for the frame
                 combined_mask = np.zeros(frame.shape[:2], dtype=np.uint8)
                 for mask_name in frame_group:
@@ -57,6 +57,8 @@ def process_all_frames(frame_h5_path, mask_h5_path, output_dir, padding_scale, s
                 bbox = get_bbox_from_mask(combined_mask)
                 if bbox is None:
                     print(f"❌ No person in mask: {frame_name}")
+                    out_path = os.path.join(output_dir, f"{frame_name}_not_found.png")
+                    cv2.imwrite(out_path, cropped)
                     continue
 
                 x, y, w, h = bbox
