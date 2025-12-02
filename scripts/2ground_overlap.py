@@ -26,6 +26,7 @@ def get_touched_ground_mask(annotations, keypoints, height, width, radius=20):
         best_mask = None
 
         for ann in annotations:
+            # if ann['class_name'] == 'walkway':
             if ann['class_name'] == 'walkway [SEP]':
                 binary_mask = maskUtils.decode(ann['segmentation'])
                 patch = binary_mask[y1:y2, x1:x2]
@@ -52,7 +53,7 @@ def process_frame(ground_h5_file, keypoints_data, mask_output_group, frame_name,
     # Extract left foot (19-21) and right foot (22-24) keypoints
     for indices in [(19, 20, 21), (22, 23, 24)]:
         for idx in indices:
-            px, py = keypoints_data[idx]
+            px, py,conf = keypoints_data[idx]
             foot_points.append((int(px + dx), int(py + dy)))
 
     # Use get_touched_ground_mask to compute the touched mask

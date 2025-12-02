@@ -17,14 +17,19 @@ import argparse
 import h5py
 
 # Add argument parsing
+## Under efficientTAM directory
 parser = argparse.ArgumentParser(description="Process GoPro video and save frames and timestamps.")
+
 parser.add_argument("--filename", type=str, help="Path to the GoPro video file.")
-parser.add_argument("--duration", type=float, default=24, help="Duration in minutes to process the video.")
+parser.add_argument("--start", type=float, default=0, help="Start time in seconds to begin extracting frames.")
+parser.add_argument("--duration", type=float, default=None, help="Duration in seconds to process the video. If not set, process until end.")
 parser.add_argument("--output", type=str, help="Path to the output HDF5 file.")
 args = parser.parse_args()
 
 filename = args.filename
-max_duration = args.duration * 60 * 1000  # Convert minutes to milliseconds
+start_time = args.start if args.start else 0  # in seconds
+duration = args.duration  # in seconds, can be None
+end_time = start_time + duration if duration is not None else None
 
 #This function initiates a call to ffprobe which returns a summary report about
 #the file of interest.  The returned information is then parsed to extract only
@@ -46,7 +51,9 @@ def creation_time(filename):
     t = out.splitlines()
     time = str(t[14][18:-1])
     time = time[2:-2]
+    # import pdb; pdb.set_trace()
     return time
+
 
 # Opens the video import and sets parameters
 video = cv2.VideoCapture(filename)
@@ -67,10 +74,14 @@ if status:
     initial = dt.datetime.strptime(t, "%Y-%m-%dT%H:%M:%S.%f")
     timestamp = initial
 
+    # Seek to start time if specified
+    if start_time > 0:
+        video.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
+
     # Initializes the frame counter
-    current_frame = 0
-    start = time.time()
-    print("Processing....")
+    current_frame = int(video.get(cv2.CAP_PROP_POS_FRAMES))
+    start_clock = time.time()
+    print(f"Processing from {start_time}s for {duration if duration is not None else 'until end'}s...")
     print(" ")
 
     # Update the output file path to use the argument
@@ -83,25 +94,27 @@ if status:
     # Reads through each frame, calculates the timestamp, and saves the frame
     while current_frame < total_frames:
         success, image = video.read()
-        # change the color space from BGR to RGB
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         if not success:
             break
 
-        elapsed_time = video.get(cv2.CAP_PROP_POS_MSEC)
-        if elapsed_time > max_duration:
+        elapsed_time = video.get(cv2.CAP_PROP_POS_MSEC) / 1000.0  # seconds
+        # Stop if we've passed the end_time (if specified)
+        if end_time is not None and elapsed_time > end_time:
             break
+        if elapsed_time < start_time:
+            continue
 
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         current_frame = int(video.get(cv2.CAP_PROP_POS_FRAMES))
-        timestamp = initial + dt.timedelta(microseconds=elapsed_time * 1000)
+        timestamp = initial + dt.timedelta(seconds=elapsed_time)
         timestamp_str = int(timestamp.timestamp() * 1e9)  # Convert to nanoseconds
 
         # Reduce the frame rate by skipping frames
-        if (current_frame + 1) % 2 != 0:  # Skip every other frame for 30fps to 15fps reduction
+        if (current_frame + 1) % 3 != 0:  # Skip every third frame for 30fps to 10fps reduction
             continue
 
         # Show progress when saving the h5py data
-        print(f"Saving frame {current_frame}/{total_frames}...")
+        print(f"Saving frame {current_frame}/{total_frames} at {elapsed_time:.2f}s...")
 
         # Save the frame with the name 'frame_{timestamp}'
         frames_group.create_dataset(f'frame_{timestamp_str}', data=image, dtype='uint8')
@@ -113,10 +126,10 @@ if status:
     h5_file.close()
 
     # Calculate how long the timestamping took
-    duration = (time.time() - float(start)) / 60
+    elapsed_minutes = (time.time() - float(start_clock)) / 60
 
     print("Video has been timestamped")
-    print("This video took:" + str(duration) + " minutes")
+    print("This video took:" + str(elapsed_minutes) + " minutes")
 
 else:
     print("Error: Could not load video")

@@ -17,6 +17,10 @@ def read_walkway_width(csv_path):
     df['rel_time'] = df['abs_time'] - df['abs_time'].min()
     # nanoseconds to seconds
     df['rel_time'] = df['rel_time'] / 1e9
+
+    # Clean the data, if width is above 10 meters, set it to NA
+    df.loc[df['width_m'] > 10, 'width_m'] = 0
+
     return df
 
 def plot_width(df, save_path=None, segments_detect=False):
@@ -29,7 +33,7 @@ def plot_width(df, save_path=None, segments_detect=False):
         consistent_segments (list): A list of DataFrames, each representing a consistent segment.
     """
     df = df[df['width_m'] != 0]
-    plt.figure(figsize=(10,6))
+    plt.figure(figsize=(15,6))
     plt.plot(df['rel_time'], df['width_m'], marker='o', markersize=0.5, linestyle='-', color='g', label='Walkway Width', alpha=0.2)
     plt.plot(df['rel_time'], df['width_m_gaussian'], linestyle='-', color='r', label='Gaussian Smoothed Width', alpha=0.7)
     # plt.plot(df['rel_time'], df['width_m_savgol'], linestyle='-', color='g', label='Savitzky-Golay Smoothed Width')
@@ -37,16 +41,18 @@ def plot_width(df, save_path=None, segments_detect=False):
     # Plot consistent segments if provided
     if segments_detect:
         # Parameters: Time window 10s consider 1.2m/s for human, around 10-12m to enable a segment detection. Variance_threshold=0.1 is around +- 0.3 meters
-        segments = segment_detect(df, 'width_m_gaussian',time_window=10, step_size=5, variance_threshold=0.1) 
+        segments = segment_detect(df, 'width_m_gaussian',time_window=10, step_size=1, variance_threshold=0.05) 
         merged_segments = merge_segments(segments, 'width_m_gaussian', time_gap=3, dist_gap=0.5)
         # when plotting the segments, name the segment orderly
+        # for i, segment in enumerate(segments):
         for i, segment in enumerate(merged_segments):
             avg_value = segment['width_m_gaussian'].mean()
+            var_value = segment['width_m_gaussian'].var()
             # plot the number on the top of the segment
             plt.text(segment['rel_time'].mean(), avg_value + 0.1, f'{i+1}', fontsize=10, ha='center', va='bottom', color='blue')
             # plot the segment as a horizontal line
             plt.hlines(y=avg_value, xmin=segment['rel_time'].min(), xmax=segment['rel_time'].max(),
-                       colors='b', linestyles='-', label=f'{i+1} Consistent Segment (avg={avg_value:.2f})', linewidth=2)
+                       colors='b', linestyles='-', label=f'{i+1} Consistent Segment (avg={avg_value:.2f}), (var={var_value:.2f})', linewidth=2)
 
     plt.xlabel('Relative Time')
     # more dense x-axis ticks
@@ -144,14 +150,13 @@ def segment_detect(df, width_category,time_window=10, step_size=3, variance_thre
         variance = segment[width_category].var()
         mean = segment[width_category].mean()
         # Check if the variance is below the threshold
-        if variance <= variance_threshold and mean > 0.5:
+        if variance <= variance_threshold and mean > 0.8:
             consistent_segments.append(segment)
         
 
         current_start += step_size  # Move the window by the step size
 
     return consistent_segments
-
 
 def merge_segments(segments, width_category,time_gap=5, dist_gap=0.3):
     """
@@ -187,11 +192,13 @@ def merge_segments(segments, width_category,time_gap=5, dist_gap=0.3):
     return merged_segments
 
 if __name__ == "__main__":
-    csv_path = '../dataset/pilot10/walkway_width.csv'
+    csv_path = '../dataset/BF004/walkway_width_01.csv'
     df = read_walkway_width(csv_path)
     df = smooth_data(df)
+    # save the smoothed data to a new csv file
+    df.to_csv('../dataset/BF004/walkway_width_smoothed_01.csv', index=False)
     # calculate_error(df)
-    plot_width(df, save_path='../dataset/pilot10/walkway_width_plot.png', segments_detect=True)
+    plot_width(df, save_path='../dataset/BF004/walkway_width_plot_01.png', segments_detect=True)
 
     # Example usage for merging frames into a video
     # frames_dir = '../dataset/pilot10/walkway_estimation/'

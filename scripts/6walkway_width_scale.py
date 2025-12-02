@@ -9,24 +9,29 @@ import cv2
 import tqdm
 import h5py
 
-def get_shoulder_avg(keypoints):
-    # Shoulders: 2 (RShoulder), 5 (LShoulder)
-    s1 = keypoints[2]
-    s2 = keypoints[5]
-    return [(s1[0]+s2[0])/2, (s1[1]+s2[1])/2]
+from openpose_utils import get_shoulder_avg, get_lowest_foot, get_wrist_avg
 
-def get_lowest_foot(keypoints):
-    # Left: 21, 19, 20; Right: 24, 22, 23
-    left = [keypoints[i] for i in [19,20,21]]
-    right = [keypoints[i] for i in [22,23,24]]
-    left_y = [pt[1] for pt in left]
-    right_y = [pt[1] for pt in right]
-    left_idx = np.argmax(left_y)
-    right_idx = np.argmax(right_y)
-    left_foot = left[left_idx]
-    right_foot = right[right_idx]
-    # Pick the lower (max y)
-    return left_foot if left_foot[1] > right_foot[1] else right_foot
+
+def get_foot_to_edge_distance(bottom, ground_line):
+    """
+    Calculate the minimum distance from the lowest foot to the left or right edge of the ground line (walkway).
+    Args:
+        bottom: (x, y) coordinate of the lowest foot.
+        ground_line: ((x_left, y), (x_right, y)) tuple for ground line endpoints
+    Returns:
+        min_dist_px: minimum distance in pixels to the left or right edge of the ground line
+        left_dist_px: distance to left edge of ground line
+        right_dist_px: distance to right edge of ground line
+    """
+    if ground_line is None:
+        return None, None, None
+    x = bottom[0]
+    x_left = ground_line[0][0]
+    x_right = ground_line[1][0]
+    left_dist = abs(x - x_left)
+    right_dist = abs(x - x_right)
+    min_dist = min(left_dist, right_dist)
+    return min_dist, left_dist, right_dist
 
 def get_ground_width(mask, foot_point):
     if mask.ndim == 3:
@@ -48,21 +53,20 @@ def render_estimation(frame, keypoints, top, bottom, ground_line, ground_width_m
         # Draw all keypoints
         for i in range(0, len(keypoints)):
             x, y = keypoints[i,0], keypoints[i,1]
-            cv2.circle(img, (int(x), int(y)), 3, (0,255,0), -1)
+            cv2.circle(img, (int(x), int(y)), 8, (0,255,0), -1)
 
         # Draw vertical line (shoulder avg to lowest foot)
-        cv2.line(img, (int(top[0]), int(top[1])), (int(bottom[0]), int(bottom[1])), (0,0,255), 2)
+        # cv2.line(img, (int(top[0]), int(top[1])), (int(bottom[0]), int(bottom[1])), (0,0,255), 10)
 
         # Draw dashed vertical line
         for i in range(0, int(abs(bottom[1] - top[1])), 10):
             start_y = int(top[1] + i)
             end_y = int(min(top[1] + i + 5, bottom[1]))
-            cv2.line(img, (int(top[0]), start_y), (int(top[0]), end_y), (0,0,255), 1)
+            cv2.line(img, (int(top[0]), start_y), (int(top[0]), end_y), (0,0,255), 10)
 
         # Draw ground horizontal line
         if ground_line:
-            cv2.line(img, ground_line[0], ground_line[1], (255,0,0), 2)
-
+            cv2.line(img, ground_line[0], ground_line[1], (255,0,0), 10)
             # Draw dashed horizontal line
             for i in range(0, int(abs(ground_line[1][0] - ground_line[0][0])), 10):
                 start_x = int(ground_line[0][0] + i)
@@ -99,7 +103,6 @@ def main():
     parser.add_argument('--real_height', type=float, required=True, help="Real height of the person in meters")
     parser.add_argument('--output_vis_dir', help="Directory to save visualization results (optional)")
     parser.add_argument('--output_csv', help="Path to save the CSV file with estimation results (optional)")
-    parser.add_argument('--interval', type=int, default=900, help="Interval for saving visualizations (default: 900)")
     args = parser.parse_args()
 
     with open(args.crop_offsets_json) as f:
@@ -113,13 +116,18 @@ def main():
         os.makedirs(args.output_vis_dir, exist_ok=True)
 
     results = []
-
-    for i, frame_id in tqdm.tqdm(enumerate(keypoints_h5['pose_keypoints'])):
-        keypoints = keypoints_h5['pose_keypoints'][frame_id][:]
-        # Access data from HDF5 files
-        ground_mask = ground_mask_h5['binary_masks'][frame_id][:]
-        frame = frame_h5['frames'][frame_id][:]
-
+    n = len(frame_h5['frames'])
+    module = n//10
+    # for i, frame_id in tqdm.tqdm(enumerate(keypoints_h5['pose_keypoints'])):
+    for i, frame_id in tqdm.tqdm(enumerate(frame_h5['frames'])):
+        try:
+            keypoints = keypoints_h5['pose_keypoints'][frame_id][:]
+            # Access data from HDF5 files
+            ground_mask = ground_mask_h5['binary_masks'][frame_id][:]
+            frame = frame_h5['frames'][frame_id][:]
+        except:
+            print(f"Data missing for frame {frame_id}, skipping.")
+            continue
         # Convert HDF5 datasets to numpy arrays
         keypoints = np.array(keypoints)
         offset = crop_offsets.get(frame_id, {"x1": 0, "y1": 0})
@@ -132,6 +140,9 @@ def main():
         # import pdb; pdb.set_trace()
         # Top: avg shoulder
         top = get_shoulder_avg(keypoints)
+        
+        # top = get_wrist_avg(keypoints)
+        
         # Bottom: lowest foot
         bottom = get_lowest_foot(keypoints)
 
@@ -149,19 +160,26 @@ def main():
         # Check if ground line equals the width of the image
         if ground_width_px == frame.shape[1]:
             print(f"{frame_id}: Ground line equals image width. Walkway width estimation: NA")
-            results.append({"frame_name": frame_id, "width_m": "NA"})
+            results.append({"frame_name": frame_id, "width_m": "NA", "foot_to_edge_m": "NA"})
             continue
 
         # Scale
         scale = args.real_height / pixel_height if pixel_height > 0 else 0
         ground_width_m = ground_width_px * scale
-        # print(f"{frame_id}: Ground width (meters):", ground_width_m)
 
-        # Append result
-        results.append({"frame_name": frame_id, "width_m": ground_width_m})
+        # Foot to edge distance (in px and meters, relative to ground line)
+        foot_to_edge_px, _, _ = get_foot_to_edge_distance(bottom, ground_line)
+        foot_to_edge_m = foot_to_edge_px * scale if foot_to_edge_px is not None else "NA"
+
+        # Append result (only minimal, scaled)
+        results.append({
+            "frame_name": frame_id,
+            "width_m": ground_width_m,
+            "foot_to_edge_m": foot_to_edge_m
+        })
 
         # Visualization for debug
-        if args.output_vis_dir and i % args.interval == 0:
+        if args.output_vis_dir and (i % module == 0):
             render_estimation(
                 frame=frame,
                 keypoints=keypoints,
@@ -176,7 +194,7 @@ def main():
     # Save results to CSV
     if args.output_csv:
         with open(args.output_csv, mode='w', newline='') as csvfile:
-            fieldnames = ["frame_name", "width_m"]
+            fieldnames = ["frame_name", "width_m", "foot_to_edge_m"]
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(results)

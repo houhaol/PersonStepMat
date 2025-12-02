@@ -4,24 +4,16 @@ import json
 import argparse
 import numpy as np
 from tqdm import tqdm
+import h5py
+import csv
+import pandas as pd
 
-# Predefined color palette
-MATERIAL_COLORS = {
-    "TerracottaTile": (80, 150, 220),
-    "Wood": (42, 42, 165),
-    "Dirt": (42, 42, 42),
-    "Metal": (0, 215, 255),
-    "Concrete": (180, 180, 180),
-    "VoidAcrylicPolymer": (128, 128, 0),
-    "Grass": (60, 179, 113),
-    "CeramicTiles": (255, 165, 0),
-    "Rubberplayground": (255, 128, 0),
-    "Asphalt": (128, 64, 128),
-    "RedCycling": (60, 20, 220),
-    "ConcretePavers": (100, 100, 200),
-    "GlazedBricks": (255, 255, 0)
-}
+from mat_utils import MATERIAL_COLORS
+from openpose_utils import BODY_25_PAIRS_RENDER, POSE_COLORS
 
+
+
+# ----------------- FUNCTIONS -----------------
 def load_predictions(json_file):
     with open(json_file, 'r') as f:
         return {
@@ -34,25 +26,30 @@ def overlay_mask_and_label(frame, mask, label, color, alpha=0.5):
         mask = mask[:, :, 0]
     mask = (mask > 0).astype(np.uint8)
 
-    # Create a copy of frame for overlay
     overlayed = frame.copy()
-
-    # Apply color only where mask is 1
     color_mask = np.zeros_like(frame)
     color_mask[mask == 1] = color
-
-    # Blend only on masked region
     mask_indices = mask == 1
+
     overlayed[mask_indices] = cv2.addWeighted(
         frame[mask_indices], 1 - alpha, color_mask[mask_indices], alpha, 0
     )
 
-    # Add material label in RED
     cv2.putText(overlayed, label, (30, 40), cv2.FONT_HERSHEY_SIMPLEX,
                 1.0, (0, 0, 255), 2, cv2.LINE_AA)
-
     return overlayed
 
+def draw_keypoints(image, keypoints, point_radius=3, line_thickness=2):
+    # keypoints: (25, 2) array, no confidence value
+    for i, (x, y) in enumerate(keypoints):
+        cv2.circle(image, (int(x), int(y)), point_radius, (0, 255, 255), -1)
+
+    # for idx, (a, b) in enumerate(BODY_25_PAIRS_RENDER):
+    #     ptA = (int(keypoints[a][0]), int(keypoints[a][1]))
+    #     ptB = (int(keypoints[b][0]), int(keypoints[b][1]))
+    #     color = POSE_COLORS[idx % len(POSE_COLORS)]
+    #     cv2.line(image, ptA, ptB, color, thickness=line_thickness)
+    return image
 
 def save_video_from_frames(output_dir, video_path, fps=10):
     frame_paths = sorted([
@@ -64,7 +61,6 @@ def save_video_from_frames(output_dir, video_path, fps=10):
         print("⚠️ No frames to compile into video.")
         return
 
-    # Read first frame to get video size
     first_frame = cv2.imread(frame_paths[0])
     height, width = first_frame.shape[:2]
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -78,47 +74,103 @@ def save_video_from_frames(output_dir, video_path, fps=10):
     out.release()
     print("✅ Video saved.")
 
+
+def render_estimation(frame, keypoints, ground_mask, material_label, frame_id, args):
+    # frame: numpy array, keypoints: np.ndarray, ground_mask: np.ndarray, material_label: str
+    img = frame  # Already loaded as numpy array
+    if img is not None:
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+        # Draw keypoints
+        img = draw_keypoints(img, keypoints)
+
+        # Overlay ground mask and label
+        if ground_mask is not None and material_label is not None:
+            color = MATERIAL_COLORS.get(material_label, (128, 128, 128))
+            mask = (ground_mask > 0).astype(np.uint8)
+            overlay = img.copy()
+            overlay[mask == 1] = color
+            alpha = args.alpha if hasattr(args, 'alpha') else 0.5
+            img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+            # Put material label text
+            # Put material label text in the middle with increased font size
+            font_scale = 5.0
+            thickness = 4
+            text = material_label
+            (text_width, text_height), baseline = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+            img_h, img_w = img.shape[:2]
+            x = (img_w - text_width) // 2
+            y = (img_h - 200)
+            cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), thickness, cv2.LINE_AA)
+
+        # Save visualization
+        vis_path = os.path.join(args.output_vis_dir, f"{frame_id}_vis.png")
+        cv2.imwrite(vis_path, img)
+        print('Visualization saved to', vis_path)
+    else:
+        print('Image data not found for visualization:', frame_id)
+
+# ----------------- MAIN -----------------
+
+def load_material_labels_csv(csv_file):
+    df = pd.read_csv(csv_file)
+    # Assumes columns: frame,label
+    return dict(zip(df['frame'], df['label_raw']))
+
 def main(args):
-    os.makedirs(args.output_dir, exist_ok=True)
-    predictions = load_predictions(args.json_file)
+    with open(args.crop_offsets_json) as f:
+        crop_offsets = json.load(f)
 
-    frames = sorted([f for f in os.listdir(args.frame_dir) if f.endswith(".png")])
+    keypoints_h5 = h5py.File(args.keypoint_json, 'r')
+    ground_mask_h5 = h5py.File(args.ground_mask, 'r')
+    frame_h5 = h5py.File(args.frame_name, 'r')
 
-    for frame_name in tqdm(frames):
-        frame_path = os.path.join(args.frame_dir, frame_name)
-        mask_name = frame_name.replace(".png", "_fused_mask.png")
-        mask_path = os.path.join(args.mask_dir, mask_name)
+    # Load material labels from CSV
+    material_labels = load_material_labels_csv(args.material_label_csv)
 
-        if frame_name not in predictions:
-            continue
+    if args.output_vis_dir:
+        os.makedirs(args.output_vis_dir, exist_ok=True)
 
-        label = predictions[frame_name].get("label_voted", "Unknown")
-        color = MATERIAL_COLORS.get(label, (255, 255, 255))
+        for i, frame_id in tqdm(enumerate(keypoints_h5['pose_keypoints'])):
+            keypoints = keypoints_h5['pose_keypoints'][frame_id][:]
+            ground_mask = ground_mask_h5['binary_masks'][frame_id][:]
+            frame = frame_h5['frames'][frame_id][:]
 
-        frame = cv2.imread(frame_path)
-        mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            keypoints = np.array(keypoints)
+            offset = crop_offsets.get(frame_id, {"x1": 0, "y1": 0})
+            dx, dy = offset["x1"], offset["y1"]
+            for j in range(len(keypoints)):
+                keypoints[j, 0] += dx
+                keypoints[j, 1] += dy
+            ground_mask = np.array(ground_mask)
+            frame = np.array(frame)
 
-        if frame is None or mask is None:
-            print(f"⚠️ Missing frame or mask for {frame_name}")
-            continue
+            # Get material label for this frame
+            material_label = material_labels.get(frame_id, None)
+            # Visualization for debug
+            if args.output_vis_dir and i % args.interval == 0:
+                render_estimation(
+                    frame=frame,
+                    keypoints=keypoints,
+                    ground_mask=ground_mask,
+                    material_label=material_label,
+                    frame_id=frame_id,
+                    args=args
+                )
 
-        annotated = overlay_mask_and_label(frame, mask, label, color, alpha=args.alpha)
 
-        out_path = os.path.join(args.output_dir, frame_name)
-        cv2.imwrite(out_path, annotated)
-
-    if args.merge_video:
-        save_video_from_frames(args.output_dir, args.video_path, fps=args.fps)
-
+# ----------------- ARGUMENT PARSER -----------------
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Overlay material masks and labels on RGB frames and optionally export video")
-    parser.add_argument("--frame_dir", required=True, help="Directory of RGB frames")
-    parser.add_argument("--mask_dir", required=True, help="Directory of binary masks")
-    parser.add_argument("--json_file", required=True, help="Path to prediction JSON")
-    parser.add_argument("--output_dir", default="visualized", help="Output directory for annotated images")
+
+    parser.add_argument("--crop_offsets_json", required=True, help="Crop offset JSON for remapping keypoints")
+    parser.add_argument("--keypoint_json", required=True, help="HDF5 file with keypoints")
+    parser.add_argument("--ground_mask", required=True, help="HDF5 file with ground masks")
+    parser.add_argument("--frame_name", required=True, help="HDF5 file with frames")
+    parser.add_argument("--material_label_csv", required=True, help="CSV file with material labels for each frame")
+    parser.add_argument("--output_vis_dir", default="visualized", help="Output directory for annotated images")
     parser.add_argument("--alpha", type=float, default=0.5, help="Overlay transparency")
-    parser.add_argument("--merge_video", action="store_true", help="Merge visualized frames into video")
-    parser.add_argument("--video_path", default="material_overlay.mp4", help="Output video path")
-    parser.add_argument("--fps", type=int, default=1, help="Frames per second for output video")
+    parser.add_argument("--interval", type=int, default=1, help="Visualization interval")
+
     args = parser.parse_args()
     main(args)
