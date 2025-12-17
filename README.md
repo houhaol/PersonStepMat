@@ -1,15 +1,24 @@
 # Walkway identification and attribute analysis
 
+The main procedure is: 
+1. Track participants
+2. Pose estimation to extract participant's feet as spatial cues
+3. Walkway segmentation from Large Vision models (Grounding DINO + SAM)
+4. Filter the walkway candidates from step 3 to extract the actual walkway stepped by participant
+5. Walkway material prediction
+6. Walkway width measurement
 
 ## 0TrackingParticipants 
 
-### 0.1 Create Video frames from GoPro Video
+### 0.1 Sample Video frames from GoPro Video
 ```
 python 0gopro_video_to_h5py.py --filename /home/houhao/workspace/VINS-Fusion/pilot10/GX010048.MP4 --start --duration 660 --output ../dataset/pilot10/frames.h5
 ```
-Use efficientTAM to track participants. \
+
+### 0.2 Use efficientTAM to track participants. 
 For tracking purpose, use the first image to define the region on participants. Use warmup_only option for defining the participants in the first frame. Revise the points and run the inference without warmup_only option. 
 ```
+cd EfficientTAM/notebooks
 python 1gopro_tracking.py --h5_file /home/houhao/workspace/PersonStepMat/dataset/BF002/frames_03.h5 --output_file /home/houhao/workspace/PersonStepMat/dataset/BF002/pp_masks_03.h5 --warmup_only
 ```
 Then revise the code, specifying the region to run the tracking inference. 
@@ -61,20 +70,12 @@ For large scale implementation, we use h5 file to access the image data
 ```
 python 3mat_classifier_Linear_Dino.py --support ../materials/SGWalkwayMaterials/ --frame_name ../dataset/BF002/frames_01.h5 --ground_mask ../dataset/BF002/filter_ground_01.h5 --csv --val_ratio 0 --output ../dataset/BF002/mat_pred_01
 ```
-The results are output with json or csv \
-
-Fuse ground segments with keypoints json
-```
-python 3ground_keypoints_overlay.py     --cropped_json_dir ../dataset/pilot1_park_cut/openpose_json/     --offset_json ../dataset/pilot1_park_cut/cropped/crop_offsets.json     --full_frame_dir ../dataset/pilot1_park_cut/frames     --ground_mask_dir ../dataset/pilot1_park_cut/ground_mask     --overlay_dir ../dataset/pilot1_park_cut/output_overlay --save_video
-```
-
-Use 03mat_dataset_prepare.py to sample the frames and masks. Manually assign label and save the results. 
+The results are output with json or csv 
 
 ## 6Walkway width estimation
 ```
 python 6walkway_width_scale.py --keypoint_json ../dataset/BF002/cropped/openpose_01.h5 --crop_offsets_json ../dataset/BF002/cropped/crop_offsets_01.json --ground_mask ../dataset/BF002/filter_ground_01.h5 --frame_name ../dataset/BF002/frames_01.h5 --real_height 1.4 --output_csv ../dataset/BF002/walkway_width_01.csv
 ```
-
 
 ## 7walkway width visualization and map to trajectory
 First run width_visualize to create gaussian estimation for width, a csv file will be saved
@@ -91,11 +92,8 @@ python 8trajectory_fusion_plot.py --traj /home/houhao/workspace/VINS-Fusion/BF00
 python 8trajectory_fusion_plot.py --traj /home/houhao/workspace/VINS-Fusion/pilot10/traj/traj.txt --mat /home/houhao/workspace/PersonStepMat/dataset/pilot10/mat_pred/temporal_predictions.csv
 ```
 
-count labels from csv
-=TAKE(SORTBY(UNIQUE(K2:K10089),COUNTIF(K2:K10089,UNIQUE(K2:K10089)),-1),5)
-
 ## Verification
-For verification purpose, render some sample results. 
+For verification purpose, render some sample results for each step. 
 ```
 python 0verify_h5.py
 ```
