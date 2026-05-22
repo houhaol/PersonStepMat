@@ -46,6 +46,7 @@ python 1crop_from_masks.py
 In Docker run, dir should under ~/workspace/openpose-docker, if cuda not work, stop and restart
 
 ### 1.1 Large scale implementation
+Use the `scripts/befit_batch_process.py`
 Use python api:
 ```
 cd /openpose/examples/tutorial_api_python
@@ -59,6 +60,7 @@ Altertiavely, we can apply grounded_sam_2 to get all candidate ground segments i
 
 Check out Grounded-SAM-2 to install locally or in docker.
 ```
+Use the `scripts/2ground_segmentation_batch_individual.py` in Grounded-SAM-2
 python 2ground_segmentation_batch_individual.py --output_h5 /home/houhao/Grounded-SAM-2/data/BF003/ground_01.h5 --frame_h5 /home/houhao/Grounded-SAM-2/data/BF003/frames_01.h5
 
 # Filtering the ground candidates by using feet cues
