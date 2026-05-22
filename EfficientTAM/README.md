@@ -1,3 +1,6 @@
+# Notes
+Clone Efficient TAM here and merge the 1gopro_tracking.py
+
 # Efficient Track Anything
 [[`📕Project`](https://yformer.github.io/efficient-track-anything/)][[`🤗Gradio Demo`](https://10f00f01361a8328a4.gradio.live)][[`📕Paper`](https://arxiv.org/pdf/2411.18933)][[`🤗Checkpoints`]](https://huggingface.co/yunyangx/efficient-track-anything/tree/main)
 
