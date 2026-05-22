@@ -62,7 +62,7 @@ def process_all_frames(frame_h5_path, mask_h5_path, output_dir, padding_scale, s
                 if bbox is None:
                     print(f"❌ No person in mask: {frame_name}")
                     out_path = os.path.join(output_dir, f"{frame_name}_not_found.png")
-                    cv2.imwrite(out_path, cropped)
+                    # cv2.imwrite(out_path, cropped)
                     continue
 
                 x, y, w, h = bbox

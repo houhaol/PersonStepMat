@@ -487,46 +487,47 @@ def sky_greenery_ratio_analysis(frames_h5_path, debug_dir):
 
 if __name__ == "__main__":
     # Path to the HDF5 file
-    suffix = '_01'
-    frames_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF004/frames{suffix}.h5"
-    masks_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF004/pp_masks{suffix}.h5"
-
-    openpose_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF004/cropped/openpose{suffix}.h5"
-    cropped_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF004/cropped/cropped_data{suffix}.h5"
-    offset_json = f"/media/houhao/BEFIT/PersonStepMat/BF004/cropped/crop_offsets{suffix}.json"
-
-    ground_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF004/ground{suffix}.h5"
-
-    filter_ground_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF004/filter_ground{suffix}.h5"
-
-    mat_file = f"/media/houhao/BEFIT/PersonStepMat/BF004/mat_pred{suffix}/mat_predictions{suffix}.csv"
-    width_file = f"/media/houhao/BEFIT/PersonStepMat/BF004/walkway_width_smoothed{suffix}.csv"
-
-    debug_dir = "/home/houhao/workspace/PersonStepMat/dataset/BF004/frames_debug"
-
     # suffix = '_01'
-    # frames_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/frames{suffix}.h5"
-    # masks_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/pp_masks{suffix}.h5"
+    # frames_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF007/frames{suffix}.h5"
+    # masks_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF007/pp_masks{suffix}.h5"
 
-    # openpose_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/cropped/openpose{suffix}.h5"
-    # cropped_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/cropped/cropped_data{suffix}.h5"
-    # offset_json = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/cropped/crop_offsets{suffix}.json"
+    # openpose_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF007/cropped/openpose{suffix}.h5"
+    # cropped_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF007/cropped/cropped_data{suffix}.h5"
+    # offset_json = f"/media/houhao/BEFIT/PersonStepMat/BF007/cropped/crop_offsets{suffix}.json"
 
-    # ground_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/ground{suffix}.h5"
+    # ground_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF007/ground{suffix}.h5"
 
-    # filter_ground_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/filter_ground{suffix}.h5"
+    # filter_ground_h5_path = f"/media/houhao/BEFIT/PersonStepMat/BF007/filter_ground{suffix}.h5"
 
-    # mat_file = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/mat_pred{suffix}/mat_predictions{suffix}.csv"
-    # width_file = f"/home/houhao/workspace/PersonStepMat/dataset/BF006/walkway_width_smoothed{suffix}.csv"
+    # mat_file = f"/media/houhao/BEFIT/PersonStepMat/BF007/mat_pred{suffix}/mat_predictions{suffix}.csv"
+    # width_file = f"/media/houhao/BEFIT/PersonStepMat/BF007/walkway_width_smoothed{suffix}.csv"
 
-    # debug_dir = "/home/houhao/workspace/PersonStepMat/dataset/BF006/frames_debug"
+    # debug_dir = "/home/houhao/workspace/PersonStepMat/dataset/BF007/frames_debug"
+
+    suffix = '_03'
+    BF_ID = 'BF008'
+    frames_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/frames{suffix}.h5"
+    masks_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/pp_masks{suffix}.h5"
+
+    openpose_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/cropped/openpose{suffix}.h5"
+    cropped_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/cropped/cropped_data{suffix}.h5"
+    offset_json = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/cropped/crop_offsets{suffix}.json"
+
+    ground_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/ground{suffix}.h5"
+
+    filter_ground_h5_path = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/filter_ground{suffix}.h5"
+
+    mat_file = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/mat_pred{suffix}/mat_predictions{suffix}.csv"
+    width_file = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/walkway_width_smoothed{suffix}.csv"
+
+    debug_dir = f"/home/houhao/workspace/PersonStepMat/dataset/{BF_ID}/frames_debug"
 
     # if debug_dir not exist
     if not os.path.exists(debug_dir):
         os.makedirs(debug_dir)
 
     # inspect gopro convert to rgb video frames
-    # frames_array, frame_names = inspect_raw_frames(frames_h5_path, debug_dir)
+    frames_array, frame_names = inspect_raw_frames(frames_h5_path, debug_dir)
 
     # inspect tracking on participants
     # inspect_pp_tracking(frames_h5_path, masks_h5_path, debug_dir)
@@ -544,7 +545,7 @@ if __name__ == "__main__":
     # inspect_ground_masks_filtered(filter_ground_h5_path, frames_h5_path, debug_dir)
 
     # inspect materials classification. label option is label_raw, label_voted
-    inspect_materials_classification(frames_h5_path, filter_ground_h5_path, mat_file, label='label_voted', debug_dir=debug_dir)
+    # inspect_materials_classification(frames_h5_path, filter_ground_h5_path, mat_file, label='label_voted', debug_dir=debug_dir)
 
     # inspect width
     # inspect_width_measurements(frames_h5_path, filter_ground_h5_path, width_file, label='width_m', debug_dir=debug_dir)

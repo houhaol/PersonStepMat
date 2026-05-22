@@ -213,7 +213,6 @@ if __name__ == "__main__":
     parser.add_argument('--traj', type=str, required=True, help='Path to traj.txt')
     parser.add_argument('--width', type=str, help='Path to walkway_width.csv')
     parser.add_argument('--mat', type=str, help='Path to material.csv')
-    parser.add_argument('--gait', type=str, help='Path to gait.csv')
     parser.add_argument('--output', type=str, default='traj_with_width.csv', help='Output CSV file')
     parser.add_argument('--json', type=str, help='Path to JSON file')
     args = parser.parse_args()
@@ -221,14 +220,14 @@ if __name__ == "__main__":
     # width_fused_df = fuse_feature(args.traj, args.width, 'width_m_gaussian')
 
     # plot_traj_with_numerical_features(width_fused_df, feature='width_m_gaussian', category_col=None)
-
     mat_fused_df = fuse_feature(args.traj, args.mat, 'label_smooth', categorical=True)
     if args.json:
-        width_fused_df = append_lat_lon(mat_fused_df, args.json)
+        # Check json file under VINS-Fusion
+        mat_fused_df = append_lat_lon(mat_fused_df, args.json)
         # remove file extension from output
-        width_fused_df.to_csv(args.output, index=False)
-    plot_traj_with_categorical_features(mat_fused_df, feature='label_voted')
-    mat_fused_df.to_csv(args.output, index=False)
+        mat_fused_df.to_csv(args.output, index=False)
+    # plot_traj_with_categorical_features(mat_fused_df, feature='label_voted')
+    # mat_fused_df.to_csv(args.output, index=False)
     # import pdb; pdb.set_trace()
 
 
